@@ -15,7 +15,7 @@ import datetime
 import numpy as np
 from pathlib import Path
 
-from nb_locker import check_gpu_access
+from nb_locker import check_gpu_access, check_gpu_usage
 from config import cfg
 
 def init_volume(local_path, docker_path, mode):
@@ -28,11 +28,16 @@ def run(docker_cfg):
     return cont
 
 def init_folders(run_root):
+    timestamp = '{:%b_%d_%H_%M_%S_%f}'.format(datetime.datetime.now())
+    if run_root is None:
+        root=Path(cfg.DOCKER.RUN_PATH)
+        run_root = (root/f'run_{timestamp}').absolute()
+
     out = run_root/'output'
     os.makedirs(out, exist_ok=True)
     conf = run_root/'configs'
     os.makedirs(conf, exist_ok=True)
-    return out, conf
+    return out, conf, timestamp
 
 def docker_callback(output_mount):
     logs_files = list(output_mount.rglob('log.txt'))
@@ -57,23 +62,18 @@ def read_log(log_fn):
     return np.array(val_acc)
 
 def main(run_root=None, gpus='0'):
-    p = Path(cfg.GPUS.LOCK)
-    check_gpu_access(p, gpus)
+    check_gpu_access(Path(cfg.GPUS.LOCK), gpus)
+    check_gpu_usage(gpus, delay=.2)
 
     logging.info(f'\n\tStarting docker container {run_root} @ gpu {gpus}\n')
 
-    timestamp = '{:%b_%d_%H_%M_%S_%f}'.format(datetime.datetime.now())
-    if run_root is None:
-        root=Path('runs')
-        run_root = (root/f'run_{timestamp}').absolute()
-
-    output_mount, configs_mount = init_folders(run_root)
+    output_mount, configs_mount, timestamp = init_folders(run_root)
     input_mount = '/home/sokolov/work/etc/crsch/input/data_encoded_l4/'
     resources_mount = '/tmp'
 
     docker_run = {
         'image':'sokolov/crsch:v01',
-        'name':f'sokolov{cfg.DOCKER.CONTAINER_PREFIX}{timestamp}',
+        'name':f'{cfg.OWNER}{cfg.DOCKER.CONTAINER_PREFIX}{timestamp}',
         'volumes':{**init_volume(input_mount, '/mnt/input', 'ro'),
                    **init_volume(output_mount, '/mnt/output', 'rw'),
                    **init_volume(configs_mount, '/mnt/configs', 'ro'),
@@ -91,5 +91,5 @@ def main(run_root=None, gpus='0'):
     return result
 
 if __name__ == '__main__':
-    print(main())
+    #print(main())
     print('No actual test here!')

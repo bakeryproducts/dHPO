@@ -4,18 +4,23 @@
 #################################################
 # file to edit: dev_nb/tools.ipynb
 
+import os
+import sys
+sys.path.append(os.path.join(os.getcwd(),'exp'))
+
 import fire
 import docker
+from config import cfg
 
-def check():
-    pattern = '_cycle_'
+def status():
+    pattern = cfg.DOCKER.CONTAINER_PREFIX
     print(f'\nLooking for *{pattern}* containers: ')
 
     for c in cycle_c_gen():
         gpu = check_gpu(c)
-        print(f'\t{c.name} @  GPU{gpu}')
+        print(f'\t{c.name} @ GPU{gpu} @ {c.status}')
 
-def cycle_c_gen(pat='_cycle_'):
+def cycle_c_gen(pat=cfg.DOCKER.CONTAINER_PREFIX):
     client = docker.from_env()
     containers = client.containers.list()
     for i, c in enumerate(containers):
@@ -94,5 +99,13 @@ def switch(gpus=None, mode=None):
         else:
             print(f'\tSkipping {c.name}, on GPU{c_gpus}')
 
+def clean(force):
+    if force == 'dhpo':
+        for c in cycle_c_gen():
+            if c.status == 'exited':
+                c.remove()
+    else:
+        print('Usage: clean dhpo')
+
 if __name__ == '__main__':
-    fire.Fire({'check':check, 'switch':switch})
+    fire.Fire({'status':status, 'switch':switch, 'clean':clean})

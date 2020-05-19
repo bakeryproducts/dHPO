@@ -18,8 +18,6 @@ from itertools import cycle
 from functools import partial
 from datetime import timedelta, datetime
 
-import getpass
-import GPUtil as gu
 from airflow import DAG
 from airflow.operators.bash_operator import BashOperator
 from airflow.operators.python_operator import PythonOperator

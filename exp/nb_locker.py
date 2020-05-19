@@ -4,14 +4,18 @@
 #################################################
 # file to edit: dev_nb/locker.ipynb
 
-import argparse
-import numpy  as np
-from pathlib import Path
 import os
-import datetime
 import time
 import atexit
+import argparse
+import datetime
+from pathlib import Path
 from functools import partial
+
+import numpy  as np
+import GPUtil as gu
+# from airflow.utils.decorators import apply_defaults
+# from airflow.operators.sensors import BaseSensorOperator
 
 class Lock:
     def __init__(self, path, data, seconds_delay):
@@ -101,7 +105,25 @@ def check_gpu_access(path, gpus):
     else:
         print(f'\n\tWaiting, gpu #{target_gpu} is locked. Current gpus under lock: {locked_gpus}')
         #time.sleep(lock_delay)
-        raise TimeoutError
+        raise GpuLockedTimeout
+
+def check_gpu_usage(gpus, threshlod=.2, delay=.1):
+    gpus = set([int(i) for i in gpus if i.isdigit()])
+    load = get_gpu_load(delay)
+    for g in gpus:
+        if load[g] > threshlod:
+            print(f'Usage on gpu{g} : {load[g]}')
+            raise GpuUsageTimeout
+    print(f'Gpu usage is acceptable: {load}')
+
+def get_gpu_load(delay=.1):
+    load = []
+    for i in range(10):
+        gpus = gu.getGPUs()
+        c_load = [g.load for g in gpus]
+        load.append(c_load)
+        time.sleep(delay)
+    return np.array(load).mean(axis=0)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -114,7 +136,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     gpus = args.gpus
-    p = Path('/home/sokolov/work/cycler/crsch_cycle/locks')
+    p = Path('/home/sokolov/work/cycler/dHPO/sync/locks')
 
     minute_delay = args.minute_delay
     seconds_delay = float(minute_delay) * 60

@@ -105,7 +105,7 @@ class Bo(BaseConfigBo):
     def init_map(self):
         return {
             'g':('generations', int, 200),
-            'e':('exp_power', int, np.NaN),
+            'e':('exp_power', int, 2),
             'f0':('dec_f0', int, np.NaN),
             'f1':('dec_f1', int, np.NaN),
             'f2':('dec_f2', int, np.NaN),
@@ -119,12 +119,12 @@ class Bo(BaseConfigBo):
 
 n_parallel_processes = len(cfg.GPUS.IDS)
 bo = Bo(n_parallel_processes)
-bo_p1 = {'name':'e', 'bounds':(1, 15)}
-bo_p2 = {'name':'cr', 'bounds':(.01, .99)}
+# bo_p1 = {'name':'e', 'bounds':(1, 15)}
+bo_p2 = {'name':'cr', 'bounds':(.51, .99)}
 bo_p3 = {'name':'mc', 'bounds':(0, .05)}
-bo_p4 = {'name':'co', 'bounds':(.01, .99)}
+bo_p4 = {'name':'co', 'bounds':(.51, .99)}
 
-all_params = [bo_p1, bo_p2, bo_p3, bo_p4]
+all_params = [bo_p2, bo_p3, bo_p4]
 
 def bo_all(**kwargs):
     inner_state, new_state=bo.create_state(points=kwargs['hp_points'], params=all_params, idx=kwargs['idx'])
