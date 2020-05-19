@@ -16,6 +16,7 @@ import numpy as np
 from pathlib import Path
 
 from nb_locker import check_gpu_access
+from config import cfg
 
 def init_volume(local_path, docker_path, mode):
     v = {local_path:{'bind':docker_path, 'mode':mode}}
@@ -56,7 +57,7 @@ def read_log(log_fn):
     return np.array(val_acc)
 
 def main(run_root=None, gpus='0'):
-    p = Path('/home/sokolov/work/cycler/dHPO/sync/locks')
+    p = Path(cfg.GPUS.LOCK)
     check_gpu_access(p, gpus)
 
     logging.info(f'\n\tStarting docker container {run_root} @ gpu {gpus}\n')
@@ -72,7 +73,7 @@ def main(run_root=None, gpus='0'):
 
     docker_run = {
         'image':'sokolov/crsch:v01',
-        'name':f'sokolov_cycle_{timestamp}',
+        'name':f'sokolov{cfg.DOCKER.CONTAINER_PREFIX}{timestamp}',
         'volumes':{**init_volume(input_mount, '/mnt/input', 'ro'),
                    **init_volume(output_mount, '/mnt/output', 'rw'),
                    **init_volume(configs_mount, '/mnt/configs', 'ro'),

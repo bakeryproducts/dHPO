@@ -1,2 +1,6 @@
 results/*
 sync/*
+*/**/*.swp
+*/**/__py*
+*/**/.ipynb_*
+.ipynb_checkpoints

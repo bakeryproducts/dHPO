@@ -4,10 +4,10 @@
 #################################################
 # file to edit: dev_nb/runner.ipynb
 
-import sys
-sys.path.append('/home/sokolov/work/cycler/crsch_cycle/exp/')
-
 import os
+import sys
+sys.path.append(os.path.join(os.getcwd(),'exp'))
+
 import time
 import json
 import logging
@@ -19,11 +19,12 @@ from shutil import copyfile
 import nb_dockertools as docker_tools
 from nb_cycle import get_dist, dump_state, init_params, BaseConfigCycler, Param
 from nb_bo import BaseConfigBo
+from config import cfg
 
 def run(new_state, inner_state, aux_cfg_files=None, name='cfg', gpus='0', **kwargs):
     logging.info(f'\n\tNew state for {name}:\n {json.dumps(new_state, indent=4)}\n')
 
-    root = Path('/home/sokolov/work/cycler/crsch_cycle/cycler_runs/')
+    root = Path(cfg.DAGS.RUNS)
     root = root.absolute()
     os.makedirs(root, exist_ok=True)
 

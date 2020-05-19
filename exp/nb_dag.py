@@ -6,65 +6,46 @@
 
 import os
 import sys
-sys.path.append(os.path.join(os.getcwd(),'exp'))
+from pathlib import Path
+p = '/home/sokolov/work/cycler/dHPO/exp/'
+sys.path.append(p)
+#sys.path.append(os.path.join(os.getcwd(),'exp'))
 
 import time
 import numpy as np
-from pathlib import Path
 from itertools import cycle
 from functools import partial
 from datetime import timedelta, datetime
 
+import getpass
 import GPUtil as gu
 from airflow import DAG
 from airflow.operators.bash_operator import BashOperator
 from airflow.operators.python_operator import PythonOperator
 from airflow.utils.dates import days_ago
-from airflow.utils.decorators import apply_defaults
-from airflow.operators.sensors import BaseSensorOperator
+
 
 from nb_runner import cycle_exp, cycle_mutate, \
                       cycle_crossover, cycle_combine, cycle_all,\
                       bo_exp, bo_all, bo_crossover
-
-class GpuSensor(BaseSensorOperator):
-    @apply_defaults
-    def __init__(self, gpu_id, threshold, gdelay, *args, **kwargs):
-        super(GpuSensor, self).__init__(*args, **kwargs)
-        self.gpu_id = gpu_id
-        self.threshold = threshold
-        self.gdelay = gdelay
-
-    def poke(self, context):
-        gpu_load = check_load(self.gdelay)[self.gpu_id]
-        print(f'GPULOAD{gpu_load}')
-        return gpu_load < self.threshold
-
-def check_load(delay=.1):
-    load = []
-    for i in range(10):
-        gpus = gu.getGPUs()
-        c_load = [g.load for g in gpus]
-        load.append(c_load)
-        time.sleep(delay)
-    return np.array(load).mean(axis=0)
+from config import cfg
 
 default_args = {
-    'owner': 'airflow',
+    'owner': cfg.OWNER,
     'depends_on_past': False,
-    'start_date': datetime(2020, 5, 15),
+    'start_date': days_ago(1),#datetime(2020, 5, 15),
     'email': False,
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 0,
     'retry_delay': timedelta(minutes=5),}
 
-default_pool = 'sokolov_pool_gpu0'
+default_pool = cfg.DAG.DEF_POOL
 
-dag = DAG(  'crsch_hyp_search1',
+dag = DAG(  cfg.DAG.NAME,
                 default_args=default_args,
-                description='crossover, mutate, combine chances',
-                schedule_interval='@daily')
+                description=cfg.DAG.DESC,
+                schedule_interval=None)#'@daily')
 
 def base_task_generator(name, func, dag, pool=default_pool, op_kwargs=None):
     task = PythonOperator(
@@ -73,22 +54,9 @@ def base_task_generator(name, func, dag, pool=default_pool, op_kwargs=None):
                     op_kwargs=op_kwargs,
                     provide_context=True,
                     pool=pool,
-                    retries=10,
-                    retry_delay=timedelta(minutes=3),
+                    retries=cfg.DAG.RETRIES,
+                    retry_delay=timedelta(cfg.DAG.RETRY_DELAY),
                     dag=dag,)
-#     gmap = {'gpu0':0, 'gpu1':1, 'gpu2':2,'gpu3':3}
-#     gpu_id = gmap[pool.split('_')[-1]]
-#     gpu_sensor = GpuSensor(gpu_id=gpu_id,
-#                             threshold=.1,
-#                             gdelay=.1,
-#                             task_id='sens_'+name,
-#                             pool=pool,
-#                             retries=10,
-#                             retry_delay=timedelta(minutes=1),
-#                             dag=dag,)
-
-#     task.set_upstream = gpu_sensor.set_upstream
-#     gpu_sensor >> task
     return task
 
 create_task = partial(base_task_generator, dag=dag)
@@ -158,14 +126,14 @@ def distribute(num):
         tasks.append(create_task(task_name, dw_dist, op_kwargs={'idx':i}))
     return tasks
 
-def cycle_block(n, name, func, dw_param):
+def block_optimize(n, name, func, dw_param):
     tasks = []
-    gpus_avail = cycle([0,2,3])
+    gpus_avail = cycle(cfg.GPUS.IDS)
 
     for i in range(n):
         gpu = next(gpus_avail)
         task_name = f'{name}_{i}'
-        pool = f'sokolov_pool_gpu{gpu}'
+        pool = cfg.DAG.POOL_PREFIX + str(gpu)
 
         block_func = partial(func, seq_id=i, name=task_name)
         task = create_task(task_name, dw_param, pool=pool, op_kwargs={'func':block_func})
@@ -174,7 +142,7 @@ def cycle_block(n, name, func, dw_param):
 
 #tasks = {'mut':[], 'exp':[], 'cross':[]}
 
-cycle_block(30, 'bo_cross', bo_crossover, dw_bo_param)
+block_optimize(2, 'bo_cross', bo_crossover, dw_bo_param)
 #tasks['exp'] = cycle_block(3, 'cycle_e', cycle_exp)
 
 # pooling_task1 = create_task(f'pooling1', dw_pooling_one)
@@ -186,7 +154,7 @@ cycle_block(30, 'bo_cross', bo_crossover, dw_bo_param)
 # dist_tasks = distribute(dist_num)
 # connect(pooling_task1, dist_tasks)
 
-# mut_tasks = cycle_block(7, 'cycle_m', cycle_mutate)
+# mut_tasks = block_optimize(7, 'cycle_m', cycle_mutate)
 # for dt, mt in zip(dist_tasks, chunker_list(mut_tasks, dist_num)):
 #     connect(dt, mt)
 
