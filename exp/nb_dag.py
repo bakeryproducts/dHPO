@@ -12,6 +12,7 @@ sys.path.append(p)
 #sys.path.append(os.path.join(os.getcwd(),'exp'))
 
 import time
+import json
 import numpy as np
 from itertools import cycle
 from functools import partial
@@ -37,14 +38,15 @@ default_args = {
     'email': False,
     'email_on_failure': False,
     'email_on_retry': False,
-    'retries': 0,
-    'retry_delay': timedelta(minutes=5),}
+    'retries': 0,# overrided in pythonOperator down below
+    'retry_delay': timedelta(minutes=5),# overrided in pythonOperator down below
+}
 
 default_pool = cfg.DAG.DEF_POOL
 
 dag = DAG(  cfg.DAG.NAME,
                 default_args=default_args,
-                description=cfg.DAG.DESC,
+                description=cfg.DAG.DESC + '\n' + json.dumps(cfg, indent=4),
                 schedule_interval=None)#'@daily')
 
 def base_task_generator(name, func, dag, pool=default_pool, op_kwargs=None):
@@ -55,7 +57,7 @@ def base_task_generator(name, func, dag, pool=default_pool, op_kwargs=None):
                     provide_context=True,
                     pool=pool,
                     retries=cfg.DAG.RETRIES,
-                    retry_delay=timedelta(cfg.DAG.RETRY_DELAY),
+                    retry_delay=timedelta(minutes=cfg.DAG.RETRY_DELAY),
                     dag=dag,)
     return task
 
@@ -93,15 +95,16 @@ def dw_cycle_param(func, **context):
 
 def dw_bo_param(func, **context):
     results = pull_results(**context)
-    all_params = []
+    all_hp_points = []
     for task_id, r in results.items():
         if r:
-            all_params.append({'params':r['state'], 'target':r['docker_results']['metric']})
+            all_hp_points.append({'points':r['state'], 'target':r['docker_results']['metric']})
 
     prev_results = next(upstream_results(**context))
     aux_cfg_files = prev_results['configs']
     gpus = parse_pool(context['ti'].pool)
-    return func(aux_cfg_files=aux_cfg_files, gpus=gpus, params=all_params)
+    idx = cfg.GPUS.IDS.index(int(gpus))# wont work with single exp on multiple gpus!
+    return func(aux_cfg_files=aux_cfg_files, gpus=gpus, hp_points=all_hp_points, idx=idx)
 
 def dw_pooling(num=1, **context):
     key = 'metric'
@@ -142,10 +145,12 @@ def block_optimize(n, name, func, dw_param):
 
 #tasks = {'mut':[], 'exp':[], 'cross':[]}
 
-block_optimize(2, 'bo_cross', bo_crossover, dw_bo_param)
+tasks_bo_all = block_optimize(51, 'bo_all', bo_all, dw_bo_param)
 #tasks['exp'] = cycle_block(3, 'cycle_e', cycle_exp)
 
-# pooling_task1 = create_task(f'pooling1', dw_pooling_one)
+pooling_task1 = create_task(f'pooling1', dw_pooling)
+tasks_bo_all >> pooling_task1
+
 #partial(dw_pooling, num=1)
 # dist_num = 2
 # pooling_task1 = create_task(f'pooling_two_best', partial(dw_pooling, num=dist_num))

@@ -14,8 +14,8 @@ _C.DAG.RUNS = '/home/sokolov/work/cycler/dHPO/results/dhpo_runs/'
 _C.DAG.NAME = 'dhpo2'
 _C.DAG.DESC = 'testing'
 _C.DAG.SCHED_INTERVAL = []
-_C.DAG.RETRIES=10
-_C.DAG.RETRY_DELAY=3
+_C.DAG.RETRIES = 10
+_C.DAG.RETRY_DELAY = 3
 _C.DAG.DEF_POOL = 'sokolov_pool_gpu0'
 _C.DAG.POOL_PREFIX = 'sokolov_pool_gpu'
 

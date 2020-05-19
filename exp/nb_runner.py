@@ -24,7 +24,7 @@ from config import cfg
 def run(new_state, inner_state, aux_cfg_files=None, name='cfg', gpus='0', **kwargs):
     logging.info(f'\n\tNew state for {name}:\n {json.dumps(new_state, indent=4)}\n')
 
-    root = Path(cfg.DAGS.RUNS)
+    root = Path(cfg.DAG.RUNS)
     root = root.absolute()
     os.makedirs(root, exist_ok=True)
 
@@ -105,32 +105,38 @@ class Bo(BaseConfigBo):
     def init_map(self):
         return {
             'g':('generations', int, 200),
-            'e':('exp_power', int, 10),
+            'e':('exp_power', int, np.NaN),
             'f0':('dec_f0', int, np.NaN),
             'f1':('dec_f1', int, np.NaN),
             'f2':('dec_f2', int, np.NaN),
             'f3':('dec_f3', int, np.NaN),
-            'mc':('mutate_chance', float, 0.003),
+            'mc':('mutate_chance', float, np.NaN),
             'cr':('crossover_chance', float, np.NaN),
             'co':('combine_chance', float, np.NaN)
         }
 
-bo = Bo()
-bo_p1 = {'name':'e', 'bounds':(1,15)}
-bo_p2 = {'name':'cr', 'bounds':(.01,.99)}
+
+
+n_parallel_processes = len(cfg.GPUS.IDS)
+bo = Bo(n_parallel_processes)
+bo_p1 = {'name':'e', 'bounds':(1, 15)}
+bo_p2 = {'name':'cr', 'bounds':(.01, .99)}
+bo_p3 = {'name':'mc', 'bounds':(0, .05)}
+bo_p4 = {'name':'co', 'bounds':(.01, .99)}
+
+all_params = [bo_p1, bo_p2, bo_p3, bo_p4]
 
 def bo_all(**kwargs):
-    inner_state, new_state=bo.create_state(kwargs['params'], [bo_p1, bo_p2])
-    return run(new_state=new_state, inner_state=inner_state, **kwargs)
-
-def bo_crossover(**kwargs):
-    inner_state, new_state=bo.create_state(kwargs['params'], [bo_p2])
+    inner_state, new_state=bo.create_state(points=kwargs['hp_points'], params=all_params, idx=kwargs['idx'])
     return run(new_state=new_state, inner_state=inner_state, **kwargs)
 
 def bo_exp(**kwargs):
-    inner_state, new_state=bo.create_state(kwargs['params'], [bo_p1])
+    inner_state, new_state=bo.create_state(points=kwargs['hp_points'], params=[bo_p1], idx=kwargs['idx'])
     return run(new_state=new_state, inner_state=inner_state, **kwargs)
 
+def bo_crossover(**kwargs):
+    inner_state, new_state=bo.create_state(points=kwargs['hp_points'], params=[bo_p2], idx=kwargs['idx'])
+    return run(new_state=new_state, inner_state=inner_state, **kwargs)
 
 if __name__ == '__main__':
     r1 = cycle_exp(seq_id=0, gpu=0)
