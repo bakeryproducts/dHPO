@@ -35,12 +35,21 @@ def get_dist(start, end, num, space, to_int=False):
         arr = arr.astype(np.int32)
     return arr
 
-def dump_state(state, path, name):
+def dump_state(state, path, name, is_config=True, yaml_dump=True):
     timestamp = '{:%Y_%b_%d_%H_%M_%S}'.format(datetime.datetime.now())
-    p = path/f'{timestamp}_{name}.yaml'
+    prefix = 'config_' if is_config else ''
+    if yaml_dump:
+        dump = yaml.safe_dump
+        postfix = '.yaml'
+    else:
+        dump = json.dumps
+        postfix = '.json'
+
+    p = path/f'{prefix}{timestamp}_{name}{postfix}'
     with open(p, 'w') as f:
-        f.write(yaml.safe_dump(state, indent=4))
+        f.write(dump(state, indent=4))
     return p
+
 
 def init_params(raw_params):
     params = []

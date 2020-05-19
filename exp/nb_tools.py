@@ -20,9 +20,9 @@ def status():
         gpu = check_gpu(c)
         print(f'\t{c.name} @ GPU{gpu} @ {c.status}')
 
-def cycle_c_gen(pat=cfg.DOCKER.CONTAINER_PREFIX):
+def cycle_c_gen(pat=cfg.DOCKER.CONTAINER_PREFIX, list_all=False):
     client = docker.from_env()
-    containers = client.containers.list()
+    containers = client.containers.list(all=list_all)
     for i, c in enumerate(containers):
         print(f'{i}. Inspecting {c.name}')
         if pat in c.name:
@@ -101,7 +101,7 @@ def switch(gpus=None, mode=None):
 
 def clean(force):
     if force == 'dhpo':
-        for c in cycle_c_gen():
+        for c in cycle_c_gen(list_all=True):
             if c.status == 'exited':
                 c.remove()
     else:

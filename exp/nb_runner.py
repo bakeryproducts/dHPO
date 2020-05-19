@@ -36,6 +36,8 @@ def run(new_state, inner_state, aux_cfg_files=None, name='cfg', gpus='0', **kwar
     else:
         aux_cfg_files=[]
     run_cfg_file = dump_state(new_state, configs_path, name)
+    if kwargs.get('hp_points',None):
+        dump_state(kwargs['hp_points'], configs_path, 'hp', is_config=False, yaml_dump=False)
 
     docker_result = docker_tools.main(run_path, gpus=gpus)
     results = {'configs':[run_cfg_file] + aux_cfg_files}
@@ -120,14 +122,26 @@ class Bo(BaseConfigBo):
 n_parallel_processes = len(cfg.GPUS.IDS)
 bo = Bo(n_parallel_processes)
 # bo_p1 = {'name':'e', 'bounds':(1, 15)}
-bo_p2 = {'name':'cr', 'bounds':(.51, .99)}
+bo_p2 = {'name':'cr', 'bounds':(.01, .99)}
 bo_p3 = {'name':'mc', 'bounds':(0, .05)}
-bo_p4 = {'name':'co', 'bounds':(.51, .99)}
+bo_p4 = {'name':'co', 'bounds':(.01, .99)}
 
 all_params = [bo_p2, bo_p3, bo_p4]
 
+try:
+    p = '/home/sokolov/work/cycler/dHPO/2020_May_19_20_58_39_hp.json'
+    with open(p, 'r') as f:
+        warm_start = json.load(f)
+except Exception as e:
+    warm_start = []
+    print(e)
+
 def bo_all(**kwargs):
-    inner_state, new_state=bo.create_state(points=kwargs['hp_points'], params=all_params, idx=kwargs['idx'])
+    points = []#warm_start
+    if kwargs['hp_points']:
+        points.extend(kwargs['hp_points'])
+
+    inner_state, new_state=bo.create_state(points=points, params=all_params, idx=kwargs['idx'])
     return run(new_state=new_state, inner_state=inner_state, **kwargs)
 
 def bo_exp(**kwargs):

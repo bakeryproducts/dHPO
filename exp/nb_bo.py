@@ -35,12 +35,13 @@ class BaseConfigBo:
                     n_initial_points=3*self.n_points)
 
     def register(self, o, hp_points):
+        NEGATIVE = -1
         for hp_point in hp_points:
             points = hp_point['points']
             x = [points[k] for k in sorted(points)]
-            y = hp_point['target']
+            y = NEGATIVE * hp_point['target']
             o.tell(x, y)
-            print(f'reging: {x}, {y}')
+            print(f'Registrating: {x}, {y}')
 
     def init_map(self):
         raise NotImplementedError

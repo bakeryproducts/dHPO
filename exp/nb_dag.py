@@ -29,10 +29,11 @@ from nb_runner import cycle_exp, cycle_mutate, \
                       bo_exp, bo_all, bo_crossover
 from config import cfg
 
+d = datetime.now().date()
 default_args = {
     'owner': cfg.OWNER,
     'depends_on_past': False,
-    'start_date': days_ago(1),#datetime(2020, 5, 15),
+    'start_date': datetime(d.year, d.month, d.day-1),#days_ago(1),#datetime(2020, 5, 15),
     'email': False,
     'email_on_failure': False,
     'email_on_retry': False,
@@ -41,11 +42,15 @@ default_args = {
 }
 
 default_pool = cfg.DAG.DEF_POOL
+schedule_interval = cfg.DAG.SCHED_INTERVAL if cfg.DAG.SCHED_INTERVAL else None #@daily
+description = cfg.DAG.DESC + '\n' + json.dumps(cfg, indent=4)
 
 dag = DAG(  cfg.DAG.NAME,
                 default_args=default_args,
-                description=cfg.DAG.DESC + '\n' + json.dumps(cfg, indent=4),
-                schedule_interval=None)#'@daily')
+                #max_active_runs=1,
+                catchup=False,# for disabling backfill!
+                description=description,
+                schedule_interval=schedule_interval)
 
 def base_task_generator(name, func, dag, pool=default_pool, op_kwargs=None):
     task = PythonOperator(
@@ -143,7 +148,7 @@ def block_optimize(n, name, func, dw_param):
 
 #tasks = {'mut':[], 'exp':[], 'cross':[]}
 
-tasks_bo_all = block_optimize(51, 'bo_all', bo_all, dw_bo_param)
+tasks_bo_all = block_optimize(150, 'bo_all', bo_all, dw_bo_param)
 #tasks['exp'] = cycle_block(3, 'cycle_e', cycle_exp)
 
 pooling_task1 = create_task(f'pooling1', dw_pooling)
