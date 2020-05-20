@@ -29,28 +29,33 @@ from nb_runner import cycle_exp, cycle_mutate, \
                       bo_exp, bo_all, bo_crossover
 from config import cfg
 
-d = datetime.now().date()
+d = days_ago(1)# + timedelta(hours=10, minutes=31)
+
 default_args = {
     'owner': cfg.OWNER,
     'depends_on_past': False,
-    'start_date': datetime(d.year, d.month, d.day-1),#days_ago(1),#datetime(2020, 5, 15),
+    #'start_date':d,
     'email': False,
     'email_on_failure': False,
     'email_on_retry': False,
-    'retries': 0,# overrided in pythonOperator down below
-    'retry_delay': timedelta(minutes=5),# overrided in pythonOperator down below
+    #'retries': 0,# overrided in pythonOperator down below
+    #'retry_delay': timedelta(minutes=5),# overrided in pythonOperator down below
 }
 
 default_pool = cfg.DAG.DEF_POOL
-schedule_interval = cfg.DAG.SCHED_INTERVAL if cfg.DAG.SCHED_INTERVAL else None #@daily
+#schedule_interval = cfg.DAG.SCHED_INTERVAL if cfg.DAG.SCHED_INTERVAL else None #@daily
 description = cfg.DAG.DESC + '\n' + json.dumps(cfg, indent=4)
 
+schedule_interval = '00 23 * * *'
+
 dag = DAG(  cfg.DAG.NAME,
-                default_args=default_args,
-                #max_active_runs=1,
+                max_active_runs=1,
+                start_date=d,
                 catchup=False,# for disabling backfill!
                 description=description,
-                schedule_interval=schedule_interval)
+                schedule_interval=schedule_interval,
+                default_args=default_args,
+                )
 
 def base_task_generator(name, func, dag, pool=default_pool, op_kwargs=None):
     task = PythonOperator(
@@ -148,7 +153,7 @@ def block_optimize(n, name, func, dw_param):
 
 #tasks = {'mut':[], 'exp':[], 'cross':[]}
 
-tasks_bo_all = block_optimize(150, 'bo_all', bo_all, dw_bo_param)
+tasks_bo_all = block_optimize(80, 'bo_all', bo_all, dw_bo_param)
 #tasks['exp'] = cycle_block(3, 'cycle_e', cycle_exp)
 
 pooling_task1 = create_task(f'pooling1', dw_pooling)

@@ -5,7 +5,7 @@ _C = CN()
 _C.OWNER='sokolov'
 
 _C.GPUS = CN()
-_C.GPUS.IDS= [0,1,2,3]
+_C.GPUS.IDS= [0]
 _C.GPUS.LOCK = '/home/sokolov/work/cycler/dHPO/sync/locks'
 
 _C.DAG = CN()
@@ -13,7 +13,7 @@ _C.DAG.ROOT = '/home/sokolov/work/cycler/dHPO/exp/'
 _C.DAG.RUNS = '/home/sokolov/work/cycler/dHPO/results/dhpo_runs/'
 _C.DAG.NAME = 'dhpo2'
 _C.DAG.DESC = 'testing'
-_C.DAG.SCHED_INTERVAL = '00 22 * * *'
+_C.DAG.SCHED_INTERVAL = '@daily'
 _C.DAG.RETRIES = 30
 _C.DAG.RETRY_DELAY = 10
 _C.DAG.DEF_POOL = 'sokolov_pool_gpu0'

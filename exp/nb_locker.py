@@ -14,8 +14,6 @@ from functools import partial
 
 import numpy  as np
 import GPUtil as gu
-# from airflow.utils.decorators import apply_defaults
-# from airflow.operators.sensors import BaseSensorOperator
 
 class Lock:
     def __init__(self, path, data, seconds_delay):
@@ -53,7 +51,7 @@ def base_exit_handler(lock_name):
     except Exception as e:
         print(f'Cant remove lock! {lock_name}\n', e)
 
-def lock(*, gpus='', seconds_delay=.1, path='/tmp'):
+def lock(gpus, seconds_delay, path='/tmp'):
     gpus = str(gpus).strip('()')
     lock = Lock(path, gpus, seconds_delay)
     with lock as l:
@@ -71,6 +69,16 @@ def check_locks(path):
             continue
         locked_gpus.update(read_lock(l))
     return locked_gpus
+
+def list_locks(path):
+    g = path.rglob('dhpo_*.lock')
+    if g:
+        for i, l in enumerate(g):
+            print(f'\t{i}. {l}')
+            with open(l, 'r') as f:
+                print(f'\t\tGPUS: {f.read()}')
+    else:
+        print('\tThere is no locks')
 
 def is_expired(name):
     date = name.name.strip('dhpo_').rstrip('.lock')
