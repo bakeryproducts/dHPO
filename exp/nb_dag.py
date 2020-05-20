@@ -130,10 +130,10 @@ def dw_dist(idx=None, **context):
     res = list(upstream_results(**context))[0][idx]
     return res
 
-def distribute(num):
+def distribute(name, num):
     tasks = []
     for i in range(num):
-        task_name = f'distribute_{i}'
+        task_name = f'distribute_{name}_{i}'
         tasks.append(create_task(task_name, dw_dist, op_kwargs={'idx':i}))
     return tasks
 
@@ -151,25 +151,37 @@ def block_optimize(n, name, func, dw_param):
         tasks.append(task)
     return tasks
 
-#tasks = {'mut':[], 'exp':[], 'cross':[]}
+tasks = {}
+tasks['all'] = block_optimize(10, 'cycle_all', cycle_all, dw_cycle_param)
 
-tasks_bo_all = block_optimize(80, 'bo_all', bo_all, dw_bo_param)
-#tasks['exp'] = cycle_block(3, 'cycle_e', cycle_exp)
+dist_num = 5
+pooling_task1 = create_task(f'pooling_{dist_num}_best1', partial(dw_pooling, num=dist_num))
+tasks['all'] >> pooling_task1
 
-pooling_task1 = create_task(f'pooling1', dw_pooling)
-tasks_bo_all >> pooling_task1
+dist_tasks = distribute('best_all', dist_num)
+pooling_task1 >> dist_tasks
 
-#partial(dw_pooling, num=1)
-# dist_num = 2
-# pooling_task1 = create_task(f'pooling_two_best', partial(dw_pooling, num=dist_num))
-# tasks['exp'] >> pooling_task1
+tasks['mut'] = block_optimize(25, 'cycle_m', cycle_mutate, dw_cycle_param)
+for dt, mt in zip(dist_tasks, chunker_list(tasks['mut'], dist_num)):
+    dt >> mt
 
-# dist_tasks = distribute(dist_num)
-# connect(pooling_task1, dist_tasks)
+pooling_task2 = create_task(f'pooling_{dist_num}_best2', partial(dw_pooling, num=dist_num))
+tasks['mut'] >> pooling_task2
 
-# mut_tasks = block_optimize(7, 'cycle_m', cycle_mutate)
-# for dt, mt in zip(dist_tasks, chunker_list(mut_tasks, dist_num)):
-#     connect(dt, mt)
+dist_tasks2 = distribute('best_mut', dist_num)
+pooling_task2 >> dist_tasks2
+
+
+tasks['cr'] = block_optimize(10, 'cycle_cr', cycle_crossover, dw_cycle_param)
+for dt, mt in zip(dist_tasks2, chunker_list(tasks['cr'], dist_num)):
+    dt >> mt
+
+pooling_task3 = create_task(f'pooling3', dw_pooling)
+tasks['cr'] >> pooling_task3
+
+tasks['co'] = block_optimize(5, 'cycle_co', cycle_combine, dw_cycle_param)
+pooling_task3 >> tasks['co']
+
 
 from airflow.models import TaskInstance
 from datetime import datetime
