@@ -6,7 +6,6 @@
 
 import os
 import sys
-import atexit
 sys.path.append(os.path.join(os.getcwd(),'exp'))
 
 import fire
@@ -17,35 +16,23 @@ from pathlib import Path
 from config import cfg
 from nb_locker import check_locks, list_locks, lock as locker
 
-def status():
-    pattern = cfg.DOCKER.CONTAINER_PREFIX
-    print(f'  *{pattern}* containers: ')
-
-    for c in cycle_c_gen():
-        gpu = check_gpu(c)
-        print(f'\t{c.name} @ GPU{gpu} @ {c.status}')
-
-    print(f'Active locks @ {cfg.GPUS.LOCK}:')
-    lp = Path(cfg.GPUS.LOCK)
-    list_locks(lp)
+class UnknownGpuDevice(Exception):pass
 
 def cycle_c_gen(pat=cfg.DOCKER.CONTAINER_PREFIX, list_all=False):
-    client = docker.from_env()
-    containers = client.containers.list(all=list_all)
+    containers = (docker.from_env()).containers.list(all=list_all)
     for i, c in enumerate(containers):
         print(f'{i}. container\t {c.name} :')
-        if pat in c.name:
-            yield c
-        else:
-            print(f'\t Skipping {c.name}, not part of dHPO\n')
+        if pat in c.name: yield c
+        else: print(f'\t Skipping {c.name}, not part of dHPO\n')
 
 def check_gpu(container):
     env_vars = container.attrs['Config']['Env']
-    g = None
     for v in env_vars:
         if v.startswith('CUDA_VISIBLE_DEVICES'):
-            g = v.split("=")[-1]
-    return g.split(',')
+            gpus = v.split("=")[-1]
+            break
+    else: raise UnknownGpuDevice
+    return set([int(g) for g in gpus.split(',')])
 
 def check_status(c):
     c.reload()
@@ -58,7 +45,6 @@ def unpause(c):
     if is_paused(c):
         print(f'\t UNpausing {c.name}...')
         c.unpause()
-        print('\tSUCCESS')
         return True
     elif is_running(c):
         print(f'\tWARNING {c.name} already running!')
@@ -71,7 +57,6 @@ def pause(c):
     if is_running(c):
         print(f'\t Pausing {c.name}...')
         c.pause()
-        print('\tSUCCESS')
         return True
     elif is_paused(c):
         print(f'\tWARNING {c.name} already on pause!')
@@ -89,19 +74,12 @@ def switch(gpus, mode):
     if gpus is None or mode not in ['pause', 'unpause']:
         print(usage)
         return
-        #exit(0)
 
-    if not isinstance(gpus, tuple):
-        gpus = gpus,
-    gpus = set([str(i) for i in gpus])
-    #print(gpus)
-    if mode == 'pause':
-        do = pause
-    elif mode == 'unpause':
-        do = unpause
+    if not isinstance(gpus, tuple): gpus = gpus,
+    do = pause if mode == 'pause' else unpause
 
     for c in cycle_c_gen():
-        c_gpus = set(check_gpu(c))
+        c_gpus = check_gpu(c)
         if c_gpus.intersection(gpus):
             print(f'\t{c.name} is using GPUS{c_gpus}, trying to set on "{mode}"')
             do(c)
@@ -116,56 +94,64 @@ def forced(func):
             print('Specify force arg: dhpoctl foo force')
     return force
 
+def status():
+    print(f'  *{cfg.DOCKER.CONTAINER_PREFIX}* containers: ')
+    for c in cycle_c_gen():
+        gpu = check_gpu(c)
+        print(f'\t{c.name} @ GPU{gpu} @ {c.status}')
+    print(f'Active locks @ {cfg.GPUS.LOCK}:')
+    list_locks(Path(cfg.GPUS.LOCK))
+
 @forced
 def clean():
-        for c in cycle_c_gen(list_all=True):
-            if c.status == 'exited':
-                c.remove()
-            else:
-                print(f'\tSkipping, status:{c.status}')
+    ''' Cleans up exited dhpo containers '''
+    for c in cycle_c_gen(list_all=True):
+        if c.status == 'exited': c.remove()
+        else: print(f'\tSkipping, status:{c.status}')
+
 @forced
 def kill(gpus):
-    if not isinstance(gpus, tuple):
-        gpus = gpus,
-    gpus = set([str(i) for i in gpus])
+    '''
+    Kills dhpo containers on specified gpu(s)
+    Args:
+        gpus: int or tuple | 0 | 0,1 | 2,3,6
+    '''
+    if not isinstance(gpus, tuple): gpus = gpus,
 
     for c in cycle_c_gen():
-        c_gpus = set(check_gpu(c))
-        if c_gpus.intersection(set(gpus)):
-            if c.status == 'running':
-                c.kill()
-            else:
-                print(f'\tSkipping, status:{c.status}')
+        c_gpus = check_gpu(c)
+        if c_gpus.intersection(gpus):
+            if c.status == 'running': c.kill()
+            else: print(f'\tSkipping, status:{c.status}')
         else:
             print(f'\tSkipping, @ gpu {c_gpus}')
 
-def base_exit_handler(gpus):
-    switch(gpus, 'unpause')
-
+#export
 def lock(gpus, delay):
-    lp = Path(cfg.GPUS.LOCK)
-    #exit_handler = partial(base_exit_handler, gpus=gpus)
+    ''' Locks up gpu for user
+
+        Lock dhpo usage (pause docker container) of specified gpu(s)
+        for some period of time (delay)
+    Args:
+        gpus: GPU ids, int or tuple.  | 0 | 0,1 | 2,3,6
+        delay: Time interval in seconds, int,
+    '''
     switch(gpus, 'pause')
-    #atexit.register(exit_handler)
-    locker(gpus, delay, path=lp)
+    locker(gpus, delay, path=Path(cfg.GPUS.LOCK))
 
 def reset():
+    ''' Updating locks state, dockers state. Removing expired locks '''
     lp = Path(cfg.GPUS.LOCK)
     for c in cycle_c_gen():
-        locked_gpus = set(str(i) for i in check_locks(lp))
-        c_gpus = set(check_gpu(c))
-        #print(locked_gpus, c_gpus)
-        if not locked_gpus.intersection(c_gpus):
-            unpause(c)
-        else:
-            print('locked, skip')
-            pass
+        locked_gpus = check_locks(lp)
+        if not locked_gpus.intersection(check_gpu(c)): unpause(c)
+        else: print('locked, skip')
 
 if __name__ == '__main__':
     fire.Fire({'status':status,
-               '_switch':switch,
-               'reset':reset,
+               'lock':lock,
+                'kill':kill,
                'clean':clean,
-               'kill':kill,
-               'lock':lock
+               'reset':reset,
+               'z__switch':switch,
               })

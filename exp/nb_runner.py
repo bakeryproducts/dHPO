@@ -57,7 +57,7 @@ def init_run(root):
 class Cycler(BaseConfigCycler):
     def init_map(self):
         return {
-            'g':('generations', int, 2),
+            'g':('generations', int, 150),
             'e':('exp_power', int, np.NaN),
             'f0':('dec_f0', int, np.NaN),
             'f1':('dec_f1', int, np.NaN),
@@ -106,8 +106,8 @@ def cycle_crossover(**kwargs):
 class Bo(BaseConfigBo):
     def init_map(self):
         return {
-            'g':('generations', int, 200),
-            'e':('exp_power', int, 2),
+            'g':('generations', int, 150),
+            'e':('exp_power', int, np.NaN),
             'f0':('dec_f0', int, np.NaN),
             'f1':('dec_f1', int, np.NaN),
             'f2':('dec_f2', int, np.NaN),
@@ -121,7 +121,7 @@ class Bo(BaseConfigBo):
 
 n_parallel_processes = len(cfg.GPUS.IDS)
 bo = Bo(n_parallel_processes)
-# bo_p1 = {'name':'e', 'bounds':(1, 15)}
+bo_p1 = {'name':'e', 'bounds':(.5, 15)}
 bo_p2 = {'name':'cr', 'bounds':(.01, .99)}
 bo_p3 = {'name':'mc', 'bounds':(0, .05)}
 bo_p4 = {'name':'co', 'bounds':(.01, .99)}

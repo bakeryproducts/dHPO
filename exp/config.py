@@ -5,7 +5,7 @@ _C = CN()
 _C.OWNER='sokolov'
 
 _C.GPUS = CN()
-_C.GPUS.IDS= [0]
+_C.GPUS.IDS= [0,1,2]
 _C.GPUS.LOCK = '/home/sokolov/work/cycler/dHPO/sync/locks'
 
 _C.DAG = CN()

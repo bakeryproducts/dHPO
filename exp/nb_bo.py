@@ -32,7 +32,7 @@ class BaseConfigBo:
                     dimensions=bounds,
                     random_state=1,
                     base_estimator='gp',
-                    n_initial_points=3*self.n_points)
+                    n_initial_points=2*self.n_points)
 
     def register(self, o, hp_points):
         NEGATIVE = -1

@@ -46,7 +46,7 @@ default_pool = cfg.DAG.DEF_POOL
 #schedule_interval = cfg.DAG.SCHED_INTERVAL if cfg.DAG.SCHED_INTERVAL else None #@daily
 description = cfg.DAG.DESC + '\n' + json.dumps(cfg, indent=4)
 
-schedule_interval = '00 23 * * *'
+schedule_interval = '00 22 * * *'
 
 dag = DAG(  cfg.DAG.NAME,
                 max_active_runs=1,
@@ -151,36 +151,10 @@ def block_optimize(n, name, func, dw_param):
         tasks.append(task)
     return tasks
 
-tasks = {}
-tasks['all'] = block_optimize(10, 'cycle_all', cycle_all, dw_cycle_param)
+tasks_bo_all = block_optimize(50, 'bo_all', bo_all, dw_bo_param)
 
-dist_num = 5
-pooling_task1 = create_task(f'pooling_{dist_num}_best1', partial(dw_pooling, num=dist_num))
-tasks['all'] >> pooling_task1
-
-dist_tasks = distribute('best_all', dist_num)
-pooling_task1 >> dist_tasks
-
-tasks['mut'] = block_optimize(25, 'cycle_m', cycle_mutate, dw_cycle_param)
-for dt, mt in zip(dist_tasks, chunker_list(tasks['mut'], dist_num)):
-    dt >> mt
-
-pooling_task2 = create_task(f'pooling_{dist_num}_best2', partial(dw_pooling, num=dist_num))
-tasks['mut'] >> pooling_task2
-
-dist_tasks2 = distribute('best_mut', dist_num)
-pooling_task2 >> dist_tasks2
-
-
-tasks['cr'] = block_optimize(10, 'cycle_cr', cycle_crossover, dw_cycle_param)
-for dt, mt in zip(dist_tasks2, chunker_list(tasks['cr'], dist_num)):
-    dt >> mt
-
-pooling_task3 = create_task(f'pooling3', dw_pooling)
-tasks['cr'] >> pooling_task3
-
-tasks['co'] = block_optimize(5, 'cycle_co', cycle_combine, dw_cycle_param)
-pooling_task3 >> tasks['co']
+pooling_task1 = create_task(f'pooling1', dw_pooling)
+tasks_bo_all >> pooling_task1
 
 
 from airflow.models import TaskInstance
