@@ -15,10 +15,11 @@ import datetime
 import numpy as np
 from pathlib import Path
 from shutil import copyfile
+from collections import OrderedDict
 
 import nb_dockertools as docker_tools
 from nb_cycle import get_dist, dump_state, init_params, BaseConfigCycler, Param
-from nb_bo import BaseConfigBo
+from nb_bo import  dict_merge, Bo
 from config import cfg
 
 def run(new_state, inner_state, aux_cfg_files=None, name='cfg', gpus='0', **kwargs):
@@ -103,53 +104,35 @@ def cycle_crossover(**kwargs):
     return run(new_state=new_state, inner_state=inner_state, **kwargs)
 
 
-class Bo(BaseConfigBo):
-    def init_map(self):
-        return {
-            'g':('generations', int, 150),
-            'e':('exp_power', int, np.NaN),
-            'f0':('dec_f0', int, np.NaN),
-            'f1':('dec_f1', int, np.NaN),
-            'f2':('dec_f2', int, np.NaN),
-            'f3':('dec_f3', int, np.NaN),
-            'mc':('mutate_chance', float, np.NaN),
-            'cr':('crossover_chance', float, np.NaN),
-            'co':('combine_chance', float, np.NaN)
-        }
-
-
-
 n_parallel_processes = len(cfg.GPUS.IDS)
-bo = Bo(n_parallel_processes)
-bo_p1 = {'name':'e', 'bounds':(.5, 15)}
-bo_p2 = {'name':'cr', 'bounds':(.01, .99)}
-bo_p3 = {'name':'mc', 'bounds':(0, .05)}
-bo_p4 = {'name':'co', 'bounds':(.01, .99)}
+warm_list = ['/home/sokolov/work/cycler/dHPO/2020_May_21_18_34_23_hp.json',
+            '/home/sokolov/work/cycler/dHPO/2020_May_21_19_39_08_hp.json',
+            ]
 
-all_params = [bo_p2, bo_p3, bo_p4]
+params_static = {
+    'generations':{'default':200, 'type':int},
+}
+params_genom = {
+            'genom|mutate_chance':{'bounds':(0,.05), 'type':float, 'prior':'uniform', 'default':None},
+            'genom|crossover_chance':{'bounds':(0,1), 'type':float, 'prior':'uniform', 'default':None},
+            'genom|combine_chance':{'bounds':(0,1), 'type':float, 'prior':'uniform', 'default':None},
+            }
+params_post = {
+    'post|exp_power':{'bounds':(1,15), 'type':int, 'prior':'uniform', 'default':None},
+}
 
-try:
-    p = '/home/sokolov/work/cycler/dHPO/2020_May_19_20_58_39_hp.json'
-    with open(p, 'r') as f:
-        warm_start = json.load(f)
-except Exception as e:
-    warm_start = []
-    print(e)
+p_all = {}
+[dict_merge(p_all, d) for d in [params_static, params_genom, params_post]]
+b1 = Bo(n=n_parallel_processes, params=p_all, warm_list=warm_list)
+b2 = Bo(n=n_parallel_processes, params=params_post, warm_list=warm_list)
+
 
 def bo_all(**kwargs):
-    points = []#warm_start
-    if kwargs['hp_points']:
-        points.extend(kwargs['hp_points'])
-
-    inner_state, new_state=bo.create_state(points=points, params=all_params, idx=kwargs['idx'])
+    inner_state, new_state=b1.create_state(points=kwargs['hp_points'], idx=kwargs['idx'])
     return run(new_state=new_state, inner_state=inner_state, **kwargs)
 
 def bo_exp(**kwargs):
-    inner_state, new_state=bo.create_state(points=kwargs['hp_points'], params=[bo_p1], idx=kwargs['idx'])
-    return run(new_state=new_state, inner_state=inner_state, **kwargs)
-
-def bo_crossover(**kwargs):
-    inner_state, new_state=bo.create_state(points=kwargs['hp_points'], params=[bo_p2], idx=kwargs['idx'])
+    inner_state, new_state=b2.create_state(points=kwargs['hp_points'], idx=kwargs['idx'])
     return run(new_state=new_state, inner_state=inner_state, **kwargs)
 
 if __name__ == '__main__':

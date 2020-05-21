@@ -26,7 +26,7 @@ from airflow.utils.dates import days_ago
 
 from nb_runner import cycle_exp, cycle_mutate, \
                       cycle_crossover, cycle_combine, cycle_all,\
-                      bo_exp, bo_all, bo_crossover
+                      bo_exp, bo_all
 from config import cfg
 
 d = days_ago(1)# + timedelta(hours=10, minutes=31)
@@ -151,7 +151,7 @@ def block_optimize(n, name, func, dw_param):
         tasks.append(task)
     return tasks
 
-tasks_bo_all = block_optimize(50, 'bo_all', bo_all, dw_bo_param)
+tasks_bo_all = block_optimize(80, 'bo_all', bo_all, dw_bo_param)
 
 pooling_task1 = create_task(f'pooling1', dw_pooling)
 tasks_bo_all >> pooling_task1

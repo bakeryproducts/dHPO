@@ -8,24 +8,49 @@ import os
 import sys
 sys.path.append(os.path.join(os.getcwd(),'exp'))
 
+import yaml
+import json
 import numpy as np
 from pprint import pprint
-
 from skopt import Optimizer
-from skopt.space import Real
-#from bayes_opt import BayesianOptimization, UtilityFunction, SequentialDomainReductionTransformer
+from skopt.space import Real, Integer
+from collections import Mapping, defaultdict, OrderedDict
 
 from config import cfg
+
+def dict_merge(dct, merge_dct):
+    for k, v in merge_dct.items():
+        if (k in dct and isinstance(dct[k], dict)
+                and isinstance(merge_dct[k], Mapping)):
+            dict_merge(dct[k], merge_dct[k])
+        else:
+            dct[k] = merge_dct[k]
+
+def create_nested(k, v, sep='|'):
+    d = defaultdict(dict)
+    nested = d
+    for i in k.split(sep)[:-1]:
+        nested.setdefault(i, {})
+        nested = nested[i]
+    nested[k.split('|')[-1]] = v
+    return d
 
 class BaseConfigBo:
     def __init__(self, n):
         self.n_points = n
 
-    def get_values(self, o, names):
-        o.update_next()
-        set_points = o.ask(n_points=self.n_points)
-        points = [{n:p for n,p in zip(sorted(names), points)} for points in set_points]
-        return points
+    def read_params(self, params):
+        bounds = {}
+        for name, settings in params.items():
+            if settings['default'] is not None: continue
+            space_args = {}
+            space_type = Real if settings['type'] is float else Integer
+            space_args['low'],space_args['high'] = settings['bounds'][0], settings['bounds'][1]
+            space_args['prior'] = settings['prior']
+            bounds[name] = space_type(**space_args)
+
+        bounds = [bounds[k] for k in sorted(bounds)]
+        return bounds
 
     def init_opt(self, bounds):
         return Optimizer(
@@ -34,45 +59,113 @@ class BaseConfigBo:
                     base_estimator='gp',
                     n_initial_points=2*self.n_points)
 
-    def register(self, o, hp_points):
+    def register(self, o, hp_points, boparams):
         NEGATIVE = -1
         for hp_point in hp_points:
             points = hp_point['points']
-            x = [points[k] for k in sorted(points)]
+            x = []
+            for k1, k2 in zip(sorted(points), boparams):
+                if k1 == k2: x.append(points[k1])
+                else:
+                    print('keys mismatch: ', k1, k2)
+                    raise ValueError
             y = NEGATIVE * hp_point['target']
-            o.tell(x, y)
-            print(f'Registrating: {x}, {y}')
+            try:
+                o.tell(x, y)
+                print(f'Registrating: {x}, {y}')
+            except ValueError as v:
+                print(f'\n\n\tWARNING, point is out of bounds: {v}')
 
-    def init_map(self):
-        raise NotImplementedError
+    def get_values(self, o, names):
+        o.update_next()
+        set_points = o.ask(n_points=self.n_points)
+        all_points = []
+        for points in set_points:
+            ps = {}
+            for n,p  in zip(names, points):
+                t = self.params[n]['type']
+                ps[n] = t(p)
+            all_points.append(ps)
+        #points = [{n:p for n,p in zip(names, points)} for points in set_points]
+        return all_points
 
-    def read_params(self, params):
-        bounds = {}
-        space_type = Real
-        space_args = {'prior':'uniform', 'transform':None}
-        for p in params:
-            space_args['low'],space_args['high'] = p['bounds'][0], p['bounds'][1]
-            bounds[p['name']] = space_type(**space_args)
+    def init_warmups(self,  warm_list, boparams):
+        warmups = []
+        if warm_list:
+            for w in warm_list:
+                warmups.extend(self.read_warmup(w, boparams))
+        return warmups
 
-        bounds = [bounds[k] for k in sorted(bounds)]
-        return bounds
+    def read_warmup(self, warmup, boparams):
+        if not warmup:
+            return []
+        with open(warmup, 'r') as f:
+            data = json.load(f)
+        cleared_data = []
+        for hppoint in data:
+            points = hppoint['points']
+            hpkeys = set(points.keys())
+            if hpkeys.intersection(boparams) != set(boparams):
+                return cleared_data
 
-    def create_state(self, points, params, idx):
-        names = [p['name'] for p in params]
-        bounds = self.read_params(params)
-        o = self.init_opt(bounds)
+            cleared_point = {}
+            for p in boparams:
+                cleared_point[p] = points[p]
+            cleared_data.append({'points':cleared_point, 'target':hppoint['target']})
+        return cleared_data
 
-        if points:
-            self.register(o, points)
+    def create_state(self, points, idx):
+        points = points.copy()
+        o = self.init_opt(self.bounds)
+        points.extend(self.warmup)
+        if points: self.register(o, points, self.boparams)
 
-        new_params = self.get_values(o, names)
+        list_of_new_params = self.get_values(o, self.boparams)
+        new_params = list_of_new_params[idx]
         pprint(new_params, indent=4)
-        new_params = new_params[idx]
 
-        params_map = self.init_map()
         cfg = {}
-        for name, (full_name, p_type, default_value) in params_map.items():
-            value = new_params.get(name, default_value)
-            if value is not np.NaN:
-                cfg[full_name] = p_type(value)
+        for name, settings in self.params.items():
+            new_value = new_params[name] if not settings['default'] else settings['default']
+            sub_cfg = create_nested(name, settings['type'](new_value))
+            dict_merge(cfg, sub_cfg)
+
         return new_params, cfg
+
+class Bo(BaseConfigBo):
+    def __init__(self, params, warm_list, *args, **kwargs):
+        super(Bo, self).__init__(*args, **kwargs)
+        self.params =  OrderedDict(sorted(params.items(), key=lambda x:x[0], reverse=False))
+        self.boparams = [k for k in self.params if self.params[k]['default'] is None]
+        self.bounds = self.read_params(self.params)
+        self.warmup = self.init_warmups(warm_list, self.boparams)
+
+n_parallel_processes = len(cfg.GPUS.IDS)
+warm_list = ['/home/sokolov/work/cycler/dHPO/2020_May_21_18_34_23_hp.json']
+
+params_static = {
+    'generations':{'default':200, 'type':int},
+}
+params_genom = {
+            'genom|mutate_chance':{'bounds':(0,.05), 'type':float, 'prior':'uniform', 'default':None},
+            'genom|crossover_chance':{'bounds':(0,1), 'type':float, 'prior':'uniform', 'default':None},
+            'genom|combine_chance':{'bounds':(0,1), 'type':float, 'prior':'uniform', 'default':None},
+            }
+params_post = {
+    'post|exp_power':{'bounds':(1,15), 'type':int, 'prior':'uniform', 'default':None},
+}
+
+p_all = {}
+[dict_merge(p_all, d) for d in [params_static, params_genom, params_post]]
+b1 = Bo(n=n_parallel_processes, params=p_all, warm_list=warm_list)
+
+b2 = Bo(n=n_parallel_processes, params=params_post, warm_list=warm_list)
+
+
+def bo_all(**kwargs):
+    inner_state, new_state=bo_all.create_state(points=kwargs['hp_points'], idx=kwargs['idx'])
+    return run(new_state=new_state, inner_state=inner_state, **kwargs)
+
+def bo_exp(**kwargs):
+    inner_state, new_state=bo_exp.create_state(points=kwargs['hp_points'], idx=kwargs['idx'])
+    return run(new_state=new_state, inner_state=inner_state, **kwargs)

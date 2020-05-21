@@ -6,6 +6,7 @@
 
 import os
 import sys
+import atexit
 sys.path.append(os.path.join(os.getcwd(),'exp'))
 
 import fire
@@ -17,6 +18,16 @@ from config import cfg
 from nb_locker import check_locks, list_locks, lock as locker
 
 class UnknownGpuDevice(Exception):pass
+
+colors = {
+    "RED":'\033[0;31m',
+    "GREEN":'\033[0;32m',
+    "BROWN":'\033[0;33m',
+    "NC":'\033[0m'
+}
+
+def clrd(s, clr):
+    return colors[clr] + s + colors['NC']
 
 def cycle_c_gen(pat=cfg.DOCKER.CONTAINER_PREFIX, list_all=False):
     containers = (docker.from_env()).containers.list(all=list_all)
@@ -97,8 +108,9 @@ def forced(func):
 def status():
     print(f'  *{cfg.DOCKER.CONTAINER_PREFIX}* containers: ')
     for c in cycle_c_gen():
-        gpu = check_gpu(c)
-        print(f'\t{c.name} @ GPU{gpu} @ {c.status}')
+        gpu = str(check_gpu(c)).strip('{}')
+        color = 'GREEN' if c.status == 'running' else 'BROWN'
+        print(clrd(f'\t GPU# {gpu} {c.status}', color))
     print(f'Active locks @ {cfg.GPUS.LOCK}:')
     list_locks(Path(cfg.GPUS.LOCK))
 
@@ -121,12 +133,13 @@ def kill(gpus):
     for c in cycle_c_gen():
         c_gpus = check_gpu(c)
         if c_gpus.intersection(gpus):
-            if c.status == 'running': c.kill()
+            if c.status == 'running' or c.status == 'paused':
+                print(clrd(f'Killing {c.name}','RED'))
+                c.kill()
             else: print(f'\tSkipping, status:{c.status}')
         else:
             print(f'\tSkipping, @ gpu {c_gpus}')
 
-#export
 def lock(gpus, delay):
     ''' Locks up gpu for user
 
@@ -134,9 +147,11 @@ def lock(gpus, delay):
         for some period of time (delay)
     Args:
         gpus: GPU ids, int or tuple.  | 0 | 0,1 | 2,3,6
-        delay: Time interval in seconds, int,
+        delay: Time interval in minutes, float,
     '''
     switch(gpus, 'pause')
+    delay = delay * 60
+    atexit.register(reset)
     locker(gpus, delay, path=Path(cfg.GPUS.LOCK))
 
 def reset():
