@@ -18,23 +18,29 @@ from config import cfg
 from nb_locker import check_locks, list_locks, lock as locker
 
 class UnknownGpuDevice(Exception):pass
+class CantDoThatMuch(Exception):pass
 
 colors = {
     "RED":'\033[0;31m',
     "GREEN":'\033[0;32m',
     "BROWN":'\033[0;33m',
+    "BLUE":'\033[0;34m',
     "NC":'\033[0m'
 }
 
 def clrd(s, clr):
     return colors[clr] + s + colors['NC']
 
+def log(*args, c='NC', **kwargs):
+    print(clrd(*args, **kwargs, clr=c))
+
 def cycle_c_gen(pat=cfg.DOCKER.CONTAINER_PREFIX, list_all=False):
     containers = (docker.from_env()).containers.list(all=list_all)
     for i, c in enumerate(containers):
-        print(f'{i}. container\t {c.name} :')
+        name = clrd(c.name, 'BLUE')
+        print(f'{i}. container\t {name} :')
         if pat in c.name: yield c
-        else: print(f'\t Skipping {c.name}, not part of dHPO\n')
+        else: print(f'\t Skipping {name}, not part of dHPO\n')
 
 def check_gpu(container):
     env_vars = container.attrs['Config']['Env']
@@ -58,7 +64,7 @@ def unpause(c):
         c.unpause()
         return True
     elif is_running(c):
-        print(f'\tWARNING {c.name} already running!')
+        log(f'\tWARNING {c.name} already running!', c='BROWN')
         return True
     else:
         print(f'\tSomething is wrong with {c.name}, check it manually')
@@ -70,7 +76,7 @@ def pause(c):
         c.pause()
         return True
     elif is_paused(c):
-        print(f'\tWARNING {c.name} already on pause!')
+        log(f'\tWARNING {c.name} already on pause!', c='BROWN')
         return True
     else:
         print(f'\tSomething is wrong with {c.name}, check it manually')
@@ -83,7 +89,7 @@ def switch(gpus, mode):
         switch 0,1 unpause
     '''
     if gpus is None or mode not in ['pause', 'unpause']:
-        print(usage)
+        log(usage, c='RED')
         return
 
     if not isinstance(gpus, tuple): gpus = gpus,
@@ -92,7 +98,7 @@ def switch(gpus, mode):
     for c in cycle_c_gen():
         c_gpus = check_gpu(c)
         if c_gpus.intersection(gpus):
-            print(f'\t{c.name} is using GPUS{c_gpus}, trying to set on "{mode}"')
+            #print(f'\t{c.name} is using GPUS{c_gpus}, trying to set on "{mode}"')
             do(c)
         else:
             print(f'\tSkipping {c.name}, on GPU{c_gpus}')
@@ -102,7 +108,7 @@ def forced(func):
         if force_arg == 'force':
             return func(*args, **kwargs)
         else:
-            print('Specify force arg: dhpoctl foo force')
+            log('Specify force arg: dhpoctl kill | clean  force', c='BROWN')
     return force
 
 def status():
@@ -149,8 +155,9 @@ def lock(gpus, delay):
         gpus: GPU ids, int or tuple.  | 0 | 0,1 | 2,3,6
         delay: Time interval in minutes, float,
     '''
-    switch(gpus, 'pause')
     delay = delay * 60
+    if delay > 8*60: raise CantDoThatMuch
+    switch(gpus, 'pause')
     atexit.register(reset)
     locker(gpus, delay, path=Path(cfg.GPUS.LOCK))
 
@@ -165,7 +172,7 @@ def reset():
 if __name__ == '__main__':
     fire.Fire({'status':status,
                'lock':lock,
-                'kill':kill,
+               'kill':kill,
                'clean':clean,
                'reset':reset,
                'z__switch':switch,

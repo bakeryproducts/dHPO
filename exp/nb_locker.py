@@ -15,6 +15,9 @@ from functools import partial
 import numpy  as np
 import GPUtil as gu
 
+class GpuLockedTimeout(Exception):pass
+class GpuUsageTimeout(Exception):pass
+
 class Lock:
     def __init__(self, path, data, seconds_delay):
         timedelta = datetime.timedelta(seconds=seconds_delay)
@@ -72,9 +75,9 @@ def check_locks(path):
 
 def list_locks(path):
     g = path.rglob('dhpo_*.lock')
-    if g:
+    if list(g):
         for i, l in enumerate(g):
-            print(f'\t{i}. {l}')
+            print(f'\t{i}. {l.name}')
             with open(l, 'r') as f:
                 print(f'\t\tGPUS: {f.read()}')
     else:
@@ -86,9 +89,7 @@ def is_expired(name):
     datetime_object, datetime_object > datetime.datetime.now()
     return datetime_object < datetime.datetime.now()
 
-def clean_up(name):
-    print(f'\n\t ooo deleting{name}')
-    os.remove(name)
+def clean_up(name): os.remove(name)
 
 def read_lock(name):
     with open(name, 'r') as f:
@@ -97,22 +98,16 @@ def read_lock(name):
 
 def check_gpu_access(path, gpus):
     print(f'\n\tChecking {path} for locks on gpu {gpus}...')
-    #path = Path('./test')
-    #gpus='0'
-    #lock_delay = 5
 
     target_gpu = set([int(i) for i in gpus if i.isdigit()])
     all_gpus = set((0,1,2,3))
 
-    #while True:
     locked_gpus = check_locks(path)
     avail_gpus = all_gpus - locked_gpus
     if target_gpu.issubset(avail_gpus):
         print(f'\n\tgpu {target_gpu} is avaliable...')
-        #break
     else:
         print(f'\n\tWaiting, gpu #{target_gpu} is locked. Current gpus under lock: {locked_gpus}')
-        #time.sleep(lock_delay)
         raise GpuLockedTimeout
 
 def check_gpu_usage(gpus, threshlod=.2, delay=.1):
@@ -132,23 +127,3 @@ def get_gpu_load(delay=.1):
         load.append(c_load)
         time.sleep(delay)
     return np.array(load).mean(axis=0)
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--mdelay', '-md', dest='minute_delay',
-                    default=.1,
-                    help='delay in minutes')
-    parser.add_argument('--gpus', '-g', dest='gpus',
-                    default=None,
-                    help='gpus to lock, 0,2')
-
-    args = parser.parse_args()
-    gpus = args.gpus
-    p = Path('/home/sokolov/work/cycler/dHPO/sync/locks')
-
-    minute_delay = args.minute_delay
-    seconds_delay = float(minute_delay) * 60
-    print(f'DELAY: {seconds_delay} seconds')
-    print(f'GPUS: {gpus}')
-    print(f'PATH: {p}')
-    lock(path=p, gpus=gpus, seconds_delay=seconds_delay)

@@ -127,7 +127,7 @@ class BaseConfigBo:
         cfg = {}
         for name, settings in self.params.items():
             new_value = new_params[name] if not settings['default'] else settings['default']
-            sub_cfg = create_nested(name, settings['type'](new_value))
+            sub_cfg = create_nested(name, new_value)
             dict_merge(cfg, sub_cfg)
 
         return new_params, cfg

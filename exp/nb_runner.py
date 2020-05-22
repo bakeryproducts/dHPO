@@ -110,12 +110,12 @@ warm_list = ['/home/sokolov/work/cycler/dHPO/2020_May_21_18_34_23_hp.json',
             ]
 
 params_static = {
-    'generations':{'default':200, 'type':int},
+    'generations':{'default':200},
 }
 params_genom = {
-            'genom|mutate_chance':{'bounds':(0,.05), 'type':float, 'prior':'uniform', 'default':None},
-            'genom|crossover_chance':{'bounds':(0,1), 'type':float, 'prior':'uniform', 'default':None},
-            'genom|combine_chance':{'bounds':(0,1), 'type':float, 'prior':'uniform', 'default':None},
+    'genom|mutate_chance':{'bounds':(0,.05), 'type':float, 'prior':'uniform', 'default':None},
+    'genom|crossover_chance':{'bounds':(0,1), 'type':float, 'prior':'uniform', 'default':None},
+    'genom|combine_chance':{'bounds':(0,1), 'type':float, 'prior':'uniform', 'default':None},
             }
 params_post = {
     'post|exp_power':{'bounds':(1,15), 'type':int, 'prior':'uniform', 'default':None},
