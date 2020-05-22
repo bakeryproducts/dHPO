@@ -8,39 +8,9 @@ import os
 import datetime
 import collections
 from pathlib import Path
-from collections import OrderedDict
 
 import numpy as np
 import pandas as pd
-
-def flatten(d, parent_key='', sep='_'):
-    items = []
-    for k, v in d.items():
-        new_key = parent_key + sep + k if parent_key else k
-        if isinstance(v, collections.MutableMapping):
-            items.extend(flatten(v, new_key, sep=sep).items())
-        else:
-            items.append((new_key, v))
-    return dict(items)
-
-def load_txt_log(path, types=None, read_header=False, delimiter=','):
-    with open(path, 'r') as f:
-        raw_logs = f.read()
-    logs = raw_logs.split('\n')
-
-    header=None
-    if read_header:
-        header, *logs = logs
-        header = header.split(delimeter)
-
-    parsed_logs = []
-    for line in logs:
-        line = line.split(delimiter)
-        if types is not None:
-            line = [t(l) for t,l in zip(types,line)]
-        parsed_logs.append(line)
-
-    return header, parsed_logs
 
 class BaseProject:
     def __init__(self, root, valid_func, Experiment):

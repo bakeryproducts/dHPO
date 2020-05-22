@@ -5,6 +5,8 @@
 # file to edit: dev_nb/locker.ipynb
 
 import os
+import sys
+sys.path.append(os.path.join(os.getcwd(),'exp'))
 import time
 import atexit
 import argparse
@@ -14,9 +16,8 @@ from functools import partial
 
 import numpy  as np
 import GPUtil as gu
+from nb_helpers import GpuLockedTimeout, GpuUsageTimeout
 
-class GpuLockedTimeout(Exception):pass
-class GpuUsageTimeout(Exception):pass
 
 class Lock:
     def __init__(self, path, data, seconds_delay):
@@ -75,7 +76,7 @@ def check_locks(path):
 
 def list_locks(path):
     g = path.rglob('dhpo_*.lock')
-    if list(g):
+    if g:
         for i, l in enumerate(g):
             print(f'\t{i}. {l.name}')
             with open(l, 'r') as f:

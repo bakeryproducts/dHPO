@@ -124,7 +124,8 @@ def dw_pooling(num=1, **context):
     best_docker_results = [r[0] for r in res]
     best_configs = [r[1] for r in res]
     print(f'\n\tPooling: best result : {best_docker_results}, {best_configs}\n')
-    return [{'configs':best_config} for best_config in best_configs]
+    r = [{'configs':best_config} for best_config in best_configs]
+    return r if len(r)>1 else r[0]
 
 def dw_dist(idx=None, **context):
     res = list(upstream_results(**context))[0][idx]
@@ -151,11 +152,19 @@ def block_optimize(n, name, func, dw_param):
         tasks.append(task)
     return tasks
 
-tasks_bo_all = block_optimize(80, 'bo_all', bo_all, dw_bo_param)
+tasks = {}
+#block_optimize(50, 'cycle_all', cycle_all, dw_cycle_param)
+tasks['exp'] = block_optimize(3, 'cycle_e', cycle_exp, dw_cycle_param)
+n_pooling = 2
+pooling_task1 = create_task(f'pooling_{n_pooling}_best', partial(dw_pooling, num=n_pooling))
+tasks['exp'] >> pooling_task1
 
-pooling_task1 = create_task(f'pooling1', dw_pooling)
-tasks_bo_all >> pooling_task1
+dist_tasks = distribute('best_exp', n_pooling)
+pooling_task1 >> dist_tasks
 
+mut_tasks = block_optimize(5, 'cycle_m', cycle_mutate, dw_cycle_param)
+for task_d, task_mut in zip(dist_tasks, chunker_list(mut_tasks, n_pooling)):
+    task_d >> task_mut
 
 from airflow.models import TaskInstance
 from datetime import datetime

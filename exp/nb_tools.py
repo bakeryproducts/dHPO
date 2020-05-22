@@ -16,23 +16,7 @@ from pathlib import Path
 
 from config import cfg
 from nb_locker import check_locks, list_locks, lock as locker
-
-class UnknownGpuDevice(Exception):pass
-class CantDoThatMuch(Exception):pass
-
-colors = {
-    "RED":'\033[0;31m',
-    "GREEN":'\033[0;32m',
-    "BROWN":'\033[0;33m',
-    "BLUE":'\033[0;34m',
-    "NC":'\033[0m'
-}
-
-def clrd(s, clr):
-    return colors[clr] + s + colors['NC']
-
-def log(*args, c='NC', **kwargs):
-    print(clrd(*args, **kwargs, clr=c))
+from nb_helpers import CantDoThatMuch, clrd, log
 
 def cycle_c_gen(pat=cfg.DOCKER.CONTAINER_PREFIX, list_all=False):
     containers = (docker.from_env()).containers.list(all=list_all)
@@ -98,7 +82,7 @@ def switch(gpus, mode):
     for c in cycle_c_gen():
         c_gpus = check_gpu(c)
         if c_gpus.intersection(gpus):
-            #print(f'\t{c.name} is using GPUS{c_gpus}, trying to set on "{mode}"')
+            print(f'\t{c.name} is using GPUS{c_gpus}, trying to set on "{mode}"')
             do(c)
         else:
             print(f'\tSkipping {c.name}, on GPU{c_gpus}')
@@ -158,7 +142,7 @@ def lock(gpus, delay):
     delay = delay * 60
     if delay > 8*60: raise CantDoThatMuch
     switch(gpus, 'pause')
-    atexit.register(reset)
+    #atexit.register(reset)
     locker(gpus, delay, path=Path(cfg.GPUS.LOCK))
 
 def reset():

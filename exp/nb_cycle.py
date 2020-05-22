@@ -5,16 +5,18 @@
 # file to edit: dev_nb/cycle.ipynb
 
 import os
+import sys
+sys.path.append(os.path.join(os.getcwd(),'exp'))
+
 import time
 import yaml
 import json
 import datetime
-import logging
 import numpy as np
 from pathlib import Path
-from collections import namedtuple
-import matplotlib.pyplot as plt
-#%matplotlib inline
+from collections import OrderedDict
+
+from nb_helpers import dict_merge, create_nested
 
 def from_range(start, end, num, dist=None):
     if dist is None:
@@ -35,38 +37,13 @@ def get_dist(start, end, num, space, to_int=False):
         arr = arr.astype(np.int32)
     return arr
 
-def dump_state(state, path, name, is_config=True, yaml_dump=True):
-    timestamp = '{:%Y_%b_%d_%H_%M_%S}'.format(datetime.datetime.now())
-    prefix = 'config_' if is_config else ''
-    if yaml_dump:
-        dump = yaml.safe_dump
-        postfix = '.yaml'
-    else:
-        dump = json.dumps
-        postfix = '.json'
-
-    p = path/f'{prefix}{timestamp}_{name}{postfix}'
-    with open(p, 'w') as f:
-        f.write(dump(state, indent=4))
-    return p
-
-
-def init_params(raw_params):
-    params = []
-    print(raw_params)
-    for kwargs in raw_params:
-        print(kwargs)
-        param = Param(**kwargs)
-        sampling = kwargs['sampling']
-        assert sampling == 'random' or sampling == 'sequential', sampling
-        params.append({'sampling':sampling, 'instance':param})
-    return params
-
 class Param:
-    def __init__(self, name, arr, **kwargs):
+    def __init__(self, name, arr, sampling, **kwargs):
         self.name = name
         self.arr = arr
         self.count = 0
+        self.sampling = sampling
+        self.type = kwargs['type']
 
     def __len__(self):
         return len(self.arr)
@@ -83,12 +60,18 @@ class Param:
         self.count = self.count+1 if self.count < self.__len__()-1 else 0
         return val
 
-    def get_next(self):
-        if self.count >= self.__len__():
-            raise StopIteration
-        val = self.__getitem__(self.count)
-        self.count += 1
-        return val
+    def get_next(self, **kwargs):
+        if self.sampling == 'random':
+            v = self.get_random()
+        elif self.sampling == 'sequential':
+            if kwargs.get('idx', None):
+                v = self.__getitem__(kwargs['idx'])
+            else:
+                v = self.safe_get_next()
+        else:
+            raise ValueError
+
+        return self.type(v)
 
     def reset_count(self):
         self.count=0
@@ -101,31 +84,33 @@ class Param:
 
 
 class BaseConfigCycler:
-    def get_values(self, params_dist, idx):
+    def get_values(self, idx):
         values = {}
-        for param in params_dist:
-            sampling = param['sampling']
-            if sampling == 'random':
-                val = param['instance'].get_random()
-            else:#elif sampling == 'sequential':
-                if idx is not None:
-                    val = param['instance'].__getitem__(idx)
-                else:
-                    val = param['instance'].safe_get_next()
-
-            values[param['instance'].name] = val
+        for name in self.opt_param_names:
+            kwargs = self.params[name]
+            p = Param(name=name, **kwargs)
+            values[name] = p.get_next(idx=idx)
         return values
 
-    def init_map(self):
-        raise NotImplementedError
+    def to_dict(self, params):
+        d = {}
+        params = sorted(params, key=lambda x:x['name'], reverse=False)
+        for p in params:
+            d[p['name']] = {n:v for n,v in p.items() if n != 'name'}
+        return OrderedDict(d)
 
-    def create_state(self, raw, idx=None):
-        params_dist = init_params(raw)
-        new_params = self.get_values(params_dist, idx)
-        params_map = self.init_map()
+class Cycler(BaseConfigCycler):
+    def __init__(self, params, *args, **kwargs):
+        super(Cycler, self).__init__(*args, **kwargs)
+        self.params = self.to_dict(params)
+        self.opt_param_names = [k for k in self.params if self.params[k]['default'] is None]
+
+    def create_state(self, idx=None):
+        new_params = self.get_values(idx)
+
         cfg = {}
-        for name, (full_name, p_type, default_value) in params_map.items():
-            value = new_params.get(name, default_value)
-            if value is not np.NaN:
-                cfg[full_name] = p_type(value)
+        for name, settings in self.params.items():
+            new_value = new_params[name] if not settings['default'] else settings['default']
+            sub_cfg = create_nested(name, new_value)
+            dict_merge(cfg, sub_cfg)
         return new_params, cfg

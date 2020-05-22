@@ -14,26 +14,10 @@ import numpy as np
 from pprint import pprint
 from skopt import Optimizer
 from skopt.space import Real, Integer
-from collections import Mapping, defaultdict, OrderedDict
+from collections import OrderedDict
 
 from config import cfg
-
-def dict_merge(dct, merge_dct):
-    for k, v in merge_dct.items():
-        if (k in dct and isinstance(dct[k], dict)
-                and isinstance(merge_dct[k], Mapping)):
-            dict_merge(dct[k], merge_dct[k])
-        else:
-            dct[k] = merge_dct[k]
-
-def create_nested(k, v, sep='|'):
-    d = defaultdict(dict)
-    nested = d
-    for i in k.split(sep)[:-1]:
-        nested.setdefault(i, {})
-        nested = nested[i]
-    nested[k.split('|')[-1]] = v
-    return d
+from nb_helpers import create_nested, dict_merge
 
 class BaseConfigBo:
     def __init__(self, n):
@@ -132,10 +116,17 @@ class BaseConfigBo:
 
         return new_params, cfg
 
+    def to_dict(self, params):
+        d = {}
+        params = sorted(params, key=lambda x:x['name'], reverse=False)
+        for p in params:
+            d[p['name']] = {n:v for n,v in p.items() if n != 'name'}
+        return OrderedDict(d)
+
 class Bo(BaseConfigBo):
     def __init__(self, params, warm_list, *args, **kwargs):
         super(Bo, self).__init__(*args, **kwargs)
-        self.params =  OrderedDict(sorted(params.items(), key=lambda x:x[0], reverse=False))
+        self.params =  self.to_dict(params)
         self.boparams = [k for k in self.params if self.params[k]['default'] is None]
         self.bounds = self.read_params(self.params)
         self.warmup = self.init_warmups(warm_list, self.boparams)
@@ -143,20 +134,19 @@ class Bo(BaseConfigBo):
 n_parallel_processes = len(cfg.GPUS.IDS)
 warm_list = ['/home/sokolov/work/cycler/dHPO/2020_May_21_18_34_23_hp.json']
 
-params_static = {
-    'generations':{'default':200, 'type':int},
-}
-params_genom = {
-            'genom|mutate_chance':{'bounds':(0,.05), 'type':float, 'prior':'uniform', 'default':None},
-            'genom|crossover_chance':{'bounds':(0,1), 'type':float, 'prior':'uniform', 'default':None},
-            'genom|combine_chance':{'bounds':(0,1), 'type':float, 'prior':'uniform', 'default':None},
-            }
-params_post = {
-    'post|exp_power':{'bounds':(1,15), 'type':int, 'prior':'uniform', 'default':None},
-}
+params_static = [
+            {'name':'generations', 'default':200},
+]
+params_genom = [
+            {'name':'genom|mutate_chance', 'bounds':(0,.05), 'type':float, 'prior':'uniform', 'default':None},
+            {'name':'genom|crossover_chance', 'bounds':(0,1), 'type':float, 'prior':'uniform', 'default':None},
+            {'name':'genom|combine_chance', 'bounds':(0,1), 'type':float, 'prior':'uniform', 'default':None},
+]
+params_post =[
+            {'name':'post|exp_power','bounds':(1,15), 'type':int, 'prior':'uniform', 'default':None}
+]
 
-p_all = {}
-[dict_merge(p_all, d) for d in [params_static, params_genom, params_post]]
+p_all = [*params_static, *params_genom, *params_post]
 b1 = Bo(n=n_parallel_processes, params=p_all, warm_list=warm_list)
 
 b2 = Bo(n=n_parallel_processes, params=params_post, warm_list=warm_list)
