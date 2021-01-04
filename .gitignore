@@ -4,3 +4,5 @@ sync/*
 */**/__py*
 */**/.ipynb_*
 .ipynb_checkpoints
+example
+dHPO.egg-info
